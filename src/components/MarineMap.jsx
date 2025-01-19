@@ -143,7 +143,9 @@ const MarineMap = () => {
 
   const calculateDistance = (coord1, coord2) => {
     const line = new LineString([coord1, coord2]);
-    return getLength(line);
+    // return getLength(line);
+    // Convert from meters to a smaller scale to match PDF example
+    return Math.round((getLength(line) / 1000) * 3.5); // Scaling factor to match PDF scale
   };
 
   (event) => {
@@ -203,8 +205,10 @@ const MarineMap = () => {
         const newDistances = [];
         for (let i = 1; i < coords.length; i++) {
           const distance = calculateDistance(coords[i - 1], coords[i]);
-          const adjustedDistance = distance / 1000;
-          newDistances.push(adjustedDistance);
+          // No need to divide by 1000 as we want meters
+          //   const adjustedDistance = distance / 1000;
+          //   newDistances.push(Math.round(distance)); // Round to whole numbers for meters
+          newDistances.push(distance); // Now returns in scaled meters directly
         }
 
         setCoordinates(transformed);
@@ -278,8 +282,10 @@ const MarineMap = () => {
         const newDistances = [];
         for (let i = 1; i < coords.length; i++) {
           const distance = calculateDistance(coords[i - 1], coords[i]);
-          const adjustedDistance = distance / 1000;
-          newDistances.push(adjustedDistance);
+          // No need to divide by 1000 as we want meters
+          //   const adjustedDistance = distance / 1000;
+          //   newDistances.push(Math.round(distance)); // Round to whole numbers for meters
+          newDistances.push(distance); // Now returns in scaled meters directly
         }
 
         setCoordinates(transformed);
@@ -432,11 +438,27 @@ const MarineMap = () => {
                         {coord.points.map((point, pIdx) => (
                           <div
                             key={pIdx}
-                            style={{ fontSize: "0.9em", marginBottom: "4px" }}
+                            style={{
+                              fontSize: "0.9em",
+                              marginBottom: "4px",
+                              display: "grid",
+                              gridTemplateColumns: "1fr 100px",
+                              gap: "10px",
+                              alignItems: "center",
+                            }}
                           >
-                            {`${Math.abs(point[0]).toFixed(6)}, ${Math.abs(
-                              point[1]
-                            ).toFixed(6)}`}
+                            <div>
+                              {`${Math.abs(point[0]).toFixed(6)}, ${Math.abs(
+                                point[1]
+                              ).toFixed(6)}`}
+                            </div>
+                            <div>
+                              {pIdx > 0
+                                ? `${Number(drawnDistances[pIdx - 1]).toFixed(
+                                    1
+                                  )}`
+                                : "--"}
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -598,12 +620,94 @@ const MarineMap = () => {
 
     vectorSourceRef.current.addFeature(polygonFeature);
 
+    // Calculate distances:
+    const updatedDistances = [];
+
+    // If inserting before a point
+    if (insertPosition === "before") {
+      // Add distances for original points until insertion
+      for (let i = 0; i < selectedPointIndex; i++) {
+        updatedDistances.push(drawnDistances[i]);
+      }
+
+      // Calculate distance from linestring point to polygon start
+      const connectionDistance = calculateDistance(
+        transform(
+          originalLineString[selectedPointIndex],
+          "EPSG:4326",
+          "EPSG:3857"
+        ),
+        transform(coordinates[0], "EPSG:4326", "EPSG:3857")
+      );
+      // ) / 1000; // no need 1000 above line
+
+      //   updatedDistances.push(Math.round(connectionDistance)); // Round to whole numbers
+
+      updatedDistances.push(connectionDistance);
+
+      // Calculate polygon perimeter distances
+      for (let i = 1; i < coordinates.length; i++) {
+        const distance = calculateDistance(
+          transform(coordinates[i - 1], "EPSG:4326", "EPSG:3857"),
+          transform(coordinates[i], "EPSG:4326", "EPSG:3857")
+        );
+        // ) / 1000; no need 1000
+
+        // updatedDistances.push(Math.round(distance)); // Round to whole numbers
+        updatedDistances.push(distance);
+      }
+
+      // Add remaining linestring distances
+      for (let i = selectedPointIndex; i < drawnDistances.length; i++) {
+        updatedDistances.push(drawnDistances[i]);
+      }
+    } else {
+      // Similar logic for 'after' insertion
+      // Add distances up to and including selected point
+      for (let i = 0; i <= selectedPointIndex; i++) {
+        updatedDistances.push(drawnDistances[i]);
+      }
+
+      // Calculate distance from linestring point to polygon start
+      const connectionDistance =
+        calculateDistance(
+          transform(
+            originalLineString[selectedPointIndex],
+            "EPSG:4326",
+            "EPSG:3857"
+          ),
+          transform(coordinates[0], "EPSG:4326", "EPSG:3857")
+        ) / 1000;
+      updatedDistances.push(connectionDistance);
+
+      // Calculate polygon perimeter distances
+      for (let i = 1; i < coordinates.length; i++) {
+        const distance =
+          calculateDistance(
+            transform(coordinates[i - 1], "EPSG:4326", "EPSG:3857"),
+            transform(coordinates[i], "EPSG:4326", "EPSG:3857")
+          ) / 1000;
+        updatedDistances.push(distance);
+      }
+
+      // Add remaining distances
+      for (let i = selectedPointIndex + 1; i < drawnDistances.length; i++) {
+        updatedDistances.push(drawnDistances[i]);
+      }
+    }
+
+    // Update states with new distances
+    setDrawnDistances(updatedDistances);
+
     // Update state using original linestring + polygon
     setDrawnCoordinates(finalCoordinates);
     setShowPolygonModal(false);
     setShowMissionModal(true);
     // setCoordinates([]);
     // setDistances([]);
+
+    console.log("Original distances:", drawnDistances);
+    console.log("Updated distances:", updatedDistances);
   };
 
   return (
