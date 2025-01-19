@@ -57,8 +57,7 @@ const createLineStyle = (feature) => {
   });
 
   // Using  segment iteration approach for arrows
-  // Add arrows only for LineString
-
+  // Added arrows only for LineString
   if (type === "LineString") {
     geometry.forEachSegment(function (start, end) {
       const dx = end[0] - start[0];
@@ -67,7 +66,7 @@ const createLineStyle = (feature) => {
 
       const midPoint = [start[0] + dx / 2, start[1] + dy / 2];
 
-      // Add arrow at midpoint
+      // Added arrow at midpoint
       styles.push(
         new Style({
           geometry: new Point(midPoint),
@@ -143,7 +142,6 @@ const MarineMap = () => {
 
   const calculateDistance = (coord1, coord2) => {
     const line = new LineString([coord1, coord2]);
-    // return getLength(line);
     // Convert from meters to a smaller scale to match PDF example
     return Math.round((getLength(line) / 1000) * 3.5); // Scaling factor to match PDF scale
   };
@@ -205,9 +203,6 @@ const MarineMap = () => {
         const newDistances = [];
         for (let i = 1; i < coords.length; i++) {
           const distance = calculateDistance(coords[i - 1], coords[i]);
-          // No need to divide by 1000 as we want meters
-          //   const adjustedDistance = distance / 1000;
-          //   newDistances.push(Math.round(distance)); // Round to whole numbers for meters
           newDistances.push(distance); // Now returns in scaled meters directly
         }
 
@@ -221,7 +216,6 @@ const MarineMap = () => {
         .getGeometry()
         .getCoordinates()
         .map((coord) => transform(coord, "EPSG:3857", "EPSG:4326"));
-      //   console.log("Storing linestring points:", lineStringPoints);
       setOriginalLineString(lineStringPoints);
       setDrawnCoordinates(lineStringPoints);
       setIsDrawing(false);
@@ -231,10 +225,6 @@ const MarineMap = () => {
     map.addInteraction(drawInteraction);
     setCurrentDraw(drawInteraction);
   };
-
-  useEffect(() => {
-    // console.log("originalLineString updated useEffct:", originalLineString);
-  }, [originalLineString]);
 
   const startPolygonDrawing = () => {
     if (!map) return;
@@ -282,9 +272,6 @@ const MarineMap = () => {
         const newDistances = [];
         for (let i = 1; i < coords.length; i++) {
           const distance = calculateDistance(coords[i - 1], coords[i]);
-          // No need to divide by 1000 as we want meters
-          //   const adjustedDistance = distance / 1000;
-          //   newDistances.push(Math.round(distance)); // Round to whole numbers for meters
           newDistances.push(distance); // Now returns in scaled meters directly
         }
 
@@ -576,10 +563,8 @@ const MarineMap = () => {
   );
 
   const handleImportPoints = () => {
-    // console.log("Original linestring before import:", originalLineString);
-
     // Start with original linestring coordinates
-    const finalCoordinates = [...originalLineString]; // Use saved linestring points
+    const finalCoordinates = [...originalLineString];
 
     // Create polygon entry
     const polygonEntry = {
@@ -593,9 +578,7 @@ const MarineMap = () => {
       insertPosition === "before" ? selectedPointIndex : selectedPointIndex + 1;
     finalCoordinates.splice(insertIndex, 0, polygonEntry);
 
-    // console.log("Final coordinates:", finalCoordinates);
-
-    // Add polygon feature to map...
+    // Add polygon feature to map
     const polygonFeature = new Feature({
       geometry: new Polygon([
         coordinates.map((coord) =>
@@ -604,7 +587,7 @@ const MarineMap = () => {
       ]),
     });
 
-    // Style code remains same...
+    // Polygon style
     polygonFeature.setStyle(
       new Style({
         stroke: new Stroke({
@@ -618,32 +601,113 @@ const MarineMap = () => {
       })
     );
 
+    // Connection style
+    const connectionStyle = new Style({
+      stroke: new Stroke({
+        color: "#f59e0b",
+        width: 2,
+        lineDash: [5, 5],
+      }),
+    });
+
+    // Handle connections based on insertion type
+    if (insertPosition === "before") {
+      if (selectedPointIndex === 0) {
+        // For first point, only create one connection
+        const connectingLineFeature = new Feature({
+          geometry: new LineString([
+            transform(originalLineString[0], "EPSG:4326", "EPSG:3857"),
+            transform(coordinates[0], "EPSG:4326", "EPSG:3857"),
+          ]),
+        });
+        connectingLineFeature.setStyle(connectionStyle);
+        vectorSourceRef.current.addFeature(connectingLineFeature);
+      } else {
+        // For middle points, create two connections
+        const firstConnection = new Feature({
+          geometry: new LineString([
+            transform(
+              originalLineString[selectedPointIndex - 1],
+              "EPSG:4326",
+              "EPSG:3857"
+            ),
+            transform(coordinates[0], "EPSG:4326", "EPSG:3857"),
+          ]),
+        });
+
+        const secondConnection = new Feature({
+          geometry: new LineString([
+            transform(
+              originalLineString[selectedPointIndex],
+              "EPSG:4326",
+              "EPSG:3857"
+            ),
+            transform(coordinates[0], "EPSG:4326", "EPSG:3857"),
+          ]),
+        });
+
+        firstConnection.setStyle(connectionStyle);
+        secondConnection.setStyle(connectionStyle);
+
+        vectorSourceRef.current.addFeature(firstConnection);
+        vectorSourceRef.current.addFeature(secondConnection);
+      }
+    } else {
+      // Handle 'after' insertion
+      const firstConnection = new Feature({
+        geometry: new LineString([
+          transform(
+            originalLineString[selectedPointIndex],
+            "EPSG:4326",
+            "EPSG:3857"
+          ),
+          transform(coordinates[0], "EPSG:4326", "EPSG:3857"),
+        ]),
+      });
+
+      // Only create second connection if not the last point
+      if (selectedPointIndex < originalLineString.length - 1) {
+        const secondConnection = new Feature({
+          geometry: new LineString([
+            transform(coordinates[0], "EPSG:4326", "EPSG:3857"),
+            transform(
+              originalLineString[selectedPointIndex + 1],
+              "EPSG:4326",
+              "EPSG:3857"
+            ),
+          ]),
+        });
+        secondConnection.setStyle(connectionStyle);
+        vectorSourceRef.current.addFeature(secondConnection);
+      }
+
+      firstConnection.setStyle(connectionStyle);
+      vectorSourceRef.current.addFeature(firstConnection);
+    }
+
     vectorSourceRef.current.addFeature(polygonFeature);
 
-    // Calculate distances:
+    // Calculate distances
     const updatedDistances = [];
 
-    // If inserting before a point
     if (insertPosition === "before") {
       // Add distances for original points until insertion
       for (let i = 0; i < selectedPointIndex; i++) {
         updatedDistances.push(drawnDistances[i]);
       }
 
-      // Calculate distance from linestring point to polygon start
-      const connectionDistance = calculateDistance(
-        transform(
-          originalLineString[selectedPointIndex],
-          "EPSG:4326",
-          "EPSG:3857"
-        ),
-        transform(coordinates[0], "EPSG:4326", "EPSG:3857")
-      );
-      // ) / 1000; // no need 1000 above line
-
-      //   updatedDistances.push(Math.round(connectionDistance)); // Round to whole numbers
-
-      updatedDistances.push(connectionDistance);
+      // Calculate distance from previous point to polygon start
+      if (selectedPointIndex > 0) {
+        const firstConnectionDistance = calculateDistance(
+          transform(
+            originalLineString[selectedPointIndex - 1],
+            "EPSG:4326",
+            "EPSG:3857"
+          ),
+          transform(coordinates[0], "EPSG:4326", "EPSG:3857")
+        );
+        updatedDistances.push(firstConnectionDistance);
+      }
 
       // Calculate polygon perimeter distances
       for (let i = 1; i < coordinates.length; i++) {
@@ -651,9 +715,6 @@ const MarineMap = () => {
           transform(coordinates[i - 1], "EPSG:4326", "EPSG:3857"),
           transform(coordinates[i], "EPSG:4326", "EPSG:3857")
         );
-        // ) / 1000; no need 1000
-
-        // updatedDistances.push(Math.round(distance)); // Round to whole numbers
         updatedDistances.push(distance);
       }
 
@@ -662,31 +723,28 @@ const MarineMap = () => {
         updatedDistances.push(drawnDistances[i]);
       }
     } else {
-      // Similar logic for 'after' insertion
       // Add distances up to and including selected point
       for (let i = 0; i <= selectedPointIndex; i++) {
         updatedDistances.push(drawnDistances[i]);
       }
 
-      // Calculate distance from linestring point to polygon start
-      const connectionDistance =
-        calculateDistance(
-          transform(
-            originalLineString[selectedPointIndex],
-            "EPSG:4326",
-            "EPSG:3857"
-          ),
-          transform(coordinates[0], "EPSG:4326", "EPSG:3857")
-        ) / 1000;
+      // Calculate connection distance
+      const connectionDistance = calculateDistance(
+        transform(
+          originalLineString[selectedPointIndex],
+          "EPSG:4326",
+          "EPSG:3857"
+        ),
+        transform(coordinates[0], "EPSG:4326", "EPSG:3857")
+      );
       updatedDistances.push(connectionDistance);
 
       // Calculate polygon perimeter distances
       for (let i = 1; i < coordinates.length; i++) {
-        const distance =
-          calculateDistance(
-            transform(coordinates[i - 1], "EPSG:4326", "EPSG:3857"),
-            transform(coordinates[i], "EPSG:4326", "EPSG:3857")
-          ) / 1000;
+        const distance = calculateDistance(
+          transform(coordinates[i - 1], "EPSG:4326", "EPSG:3857"),
+          transform(coordinates[i], "EPSG:4326", "EPSG:3857")
+        );
         updatedDistances.push(distance);
       }
 
@@ -696,18 +754,14 @@ const MarineMap = () => {
       }
     }
 
-    // Update states with new distances
+    // Update states
     setDrawnDistances(updatedDistances);
-
-    // Update state using original linestring + polygon
     setDrawnCoordinates(finalCoordinates);
     setShowPolygonModal(false);
     setShowMissionModal(true);
-    // setCoordinates([]);
-    // setDistances([]);
 
-    console.log("Original distances:", drawnDistances);
-    console.log("Updated distances:", updatedDistances);
+    // console.log("Original distances:", drawnDistances);
+    // console.log("Updated distances:", updatedDistances);
   };
 
   return (
